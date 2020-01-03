@@ -12,9 +12,9 @@ AS
 					,Value				nvarchar(1000)
 					,Description		nvarchar(2000)
 					,DefaultValue		nvarchar(1000)
-					,EffectiveValue		AS ISNULL(Name,DefaultValue)
+					,EffectiveValue		AS ISNULL(Value,DefaultValue)
 			)
-		
+	
 		-- Load default configurations
 		INSERT INTO core.Params 
 		SELECT 
@@ -24,13 +24,21 @@ AS
 				VALUES 
 					('AlertEmail',NULL,'Default email address to send alerts',NULL)
 					,('MailProfile',NULL,'Default database mail profile to send email',NULL)
+					,('OutputProc',NULL,'Output procedure to use when handling alerts','core.DefaultOutput')
 			) N(Name,Value,Description,DefaultValue)
 		WHERE NOT EXISTS (
 			SELECT * FROM core.Params P WHERE P.Name = N.Name
 		)	
 
 
-		
+		/*
+			Contains all alerts!
+				TODO:
+					Optional clear
+					Parallel mode (job).
+					Strings.
+
+		*/
 		IF OBJECT_ID('dbo.Alerts') IS NULL
 			CREATE TABLE dbo.Alerts (
 					 AlertID			int IDENTITY NOT NULL PRIMARY KEY
@@ -40,6 +48,22 @@ AS
 					,Description		nvarchar(2000)
 			)
 
+			
+		/*
+			Define all custom parameters for alerts!
+		*/
+		IF OBJECT_ID('dbo.AlertParameter') IS NULL
+				CREATE TABLE dbo.AlertParameter  (
+						 AlertID	int NOT NULL
+						,paramName	varchar(200)
+						,paramValue	nvarchar(1000)
+						,paramDescription	nvarchar(2000)
+				)
+
+		
+		/*
+			Alert execution control!!
+		*/
 		IF OBJECT_ID('core.AlertExecutionControl') IS NULL
 			CREATE TABLE core.AlertExecutionControl (
 					 AlertID		int NOT NULL
@@ -50,7 +74,7 @@ AS
 			)
 
 		/*
-			Alert log!
+			Alert logging!
 		*/
 		IF OBJECT_ID('core.AlertResultLog') IS NULL
 				CREATE TABLE core.AlertResultLog (
@@ -59,6 +83,18 @@ AS
 						,AlertResult	int NOT NULL
 						,SummaryText	nvarchar(1000)
 				)
+
+		/*
+			Alert logging!
+		*/
+		IF OBJECT_ID('core.DebugOutput') IS NULL
+				CREATE TABLE core.DebugOutput (
+						 InsertDate		datetime NOT NULL
+						,AlertID		int not NULL
+						,Result			int
+						,ProcOutput		nvarchar(max)
+				)
+
 
 	COMMIT;
 		

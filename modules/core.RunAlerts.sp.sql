@@ -7,6 +7,7 @@
 ALTER PROCEDURE core.RunAlerts(
 	@SleepInterval varchar(15) = NULL
 	,@Debug bit = 0
+	,@CatchErrors bit = 1
 )
 AS
 	-- Iterate over alert list and run it!
@@ -27,12 +28,15 @@ AS
 		,@AlertResult int
 		,@AlertOutput nvarchar(max)
 		,@ErrorXML nvarchar(max)
+
+		,@OutputProc sysname
 	;
 
 	WHILE 1 = 1
 	BEGIN
 		SET @NextAlertNum = 0;
 
+		-- Main loop alerts!
 		WHILE 1 = 1
 		BEGIN
 			SET @NextAlertNum += 1;
@@ -84,32 +88,41 @@ AS
 				--	First, update the last run timestamp!
 				UPDATE core.AlertExecutionControl SET LastRun = GETDATE() WHERE AlertID = @AlertID;
 				
-				BEGIN TRY
+				IF @CatchErrors = 1
+					BEGIN TRY
+						-- Now, let procedure take control over the execution!!!!!
+						EXEC @AlertResult = @AlertProc @AlertOutput OUTPUT
+					END TRY
+					BEGIN CATCH
+						-- If some error ocurred, store in out control table...
+						SET @ErrorXML = (
+								SELECT
+										 Number			= ERROR_NUMBER()
+										,Message		= ERROR_MESSAGE()
+										,ProcedureName	= ERROR_PROCEDURE()
+										,Timestamp		= CURRENT_TIMESTAMP
+										,ErrorLine		= ERROR_LINE()
+								FOR XML RAW('error'),ELEMENTS
+						)
+
+						-- update the control table with the error data!
+						UPDATE 
+							core.AlertExecutionControl
+						SET
+							LastError = @ErrorXML
+						WHERE
+							AlertID = @AlertID;
+
+						IF @Debug = 1
+							RAISERROR('Last execution of alert %s, procedure %s resulted in error. Check error table',0,1,@AlertName,@AlertProc) WITH NOWAIT;
+
+						CONTINUE;
+					END CATCH
+				ELSE BEGIN
 					-- Now, let procedure take control over the execution!!!!!
 					EXEC @AlertResult = @AlertProc @AlertOutput OUTPUT
-				END TRY
-				BEGIN CATCH
-					-- If some error ocurred, store in out control table...
-					SET @ErrorXML = (
-							SELECT
-									 Number			= ERROR_NUMBER()
-									,Message		= ERROR_MESSAGE()
-									,ProcedureName	= ERROR_PROCEDURE()
-									,Timestamp		= CURRENT_TIMESTAMP
-									,ErrorLine		= ERROR_LINE()
-							FOR XML RAW('error'),ELEMENTS
-					)
-
-					-- update the control table with the error data!
-					UPDATE 
-						core.AlertExecutionControl
-					SET
-						LastError = @ErrorXML
-					WHERE
-						AlertID = @AlertID;
-
-					CONTINUE;
-				END CATCH
+					IF @@ERROR != 0 RETURN;
+				END
 
 			-- Lets do some logging, if debug enabled!
 			IF @Debug = 1
@@ -121,7 +134,12 @@ AS
 				RAISERROR(@TmpString,0,1) WITH NOWAIT;
 			END
 
+			-- Get the output proc for current alert!
+			SELECT @OutputProc =  value FROM core.GetAlertParameters(@AlertID,NULL)
+			WHERE name = 'OutputProc'
 
+			IF OBJECT_ID(@OutputProc) IS NULL
+				SET @OutputProc = NULL
 
 			-- No alert exists, and procedure resulted in a alert!
 			IF ISNULL(@AlertLastResult,0) = 0 AND @AlertResult = 1
@@ -129,6 +147,10 @@ AS
 				UPDATE core.AlertExecutionControl
 				SET LastResult = @AlertResult,LastResultChange = GETDATE()
 				WHERE AlertID = @AlertID
+
+				-- Runs the otput!
+				IF @Debug = 1 RAISERROR('Running outputproc %s for alert %s',0,1,@OutputProc,@AlertName) WITH NOWAIT;
+				EXEC @OutputProc @AlertID,@AlertResult,@AlertOutput
 			END
 
 			-- Alert triggered, and was cleared!
@@ -137,9 +159,13 @@ AS
 				UPDATE core.AlertExecutionControl
 				SET LastResult = @AlertResult,LastResultChange = GETDATE()
 				WHERE AlertID = @AlertID
+
+				-- Runs the otput!
+				IF @Debug = 1 RAISERROR('Running outputproc %s for alert %s',0,1,@OutputProc,@AlertName) WITH NOWAIT;
+				EXEC @OutputProc @AlertID,@AlertResult,@AlertOutput
 			END
 
-
+			
 
 
 		END
