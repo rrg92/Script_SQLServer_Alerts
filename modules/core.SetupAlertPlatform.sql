@@ -25,6 +25,7 @@ AS
 					('AlertEmail',NULL,'Default email address to send alerts',NULL)
 					,('MailProfile',NULL,'Default database mail profile to send email',NULL)
 					,('OutputProc',NULL,'Output procedure to use when handling alerts','core.DefaultOutput')
+					,('Language',NULL,'Default language in all text','en-us')
 			) N(Name,Value,Description,DefaultValue)
 		WHERE NOT EXISTS (
 			SELECT * FROM core.Params P WHERE P.Name = N.Name
@@ -39,6 +40,7 @@ AS
 					Strings.
 
 		*/
+	
 		IF OBJECT_ID('dbo.Alerts') IS NULL
 			CREATE TABLE dbo.Alerts (
 					 AlertID			int IDENTITY NOT NULL PRIMARY KEY
@@ -46,8 +48,22 @@ AS
 					,ProcedureName		sysname
 					,Frequency			varchar(100)
 					,Description		nvarchar(2000)
+					,Enabled			bit DEFAULT 0
+					,AlertOnly			bit DEFAULT 0
 			)
 
+		-- Load default configurations
+		INSERT INTO dbo.Alerts(AlertName,ProcedureName,Frequency,Description)
+		SELECT 
+			*
+		FROM
+			(
+				VALUES 
+					('DebugAlert','core.DebugAlert',NULL,'Debugging alert')
+			) N(Name,ProcName,Freq,Description)
+		WHERE NOT EXISTS (
+			SELECT * FROM dbo.Alerts A WHERE A.AlertName = N.Name
+			)
 			
 		/*
 			Define all custom parameters for alerts!
@@ -59,6 +75,8 @@ AS
 						,paramValue	nvarchar(1000)
 						,paramDescription	nvarchar(2000)
 				)
+
+			
 
 		
 		/*
@@ -94,6 +112,31 @@ AS
 						,Result			int
 						,ProcOutput		nvarchar(max)
 				)
+
+		/*
+			Alert logging!
+		*/
+		IF OBJECT_ID('dbo.StringText') IS NULL
+				CREATE TABLE dbo.StringText (
+						 StringID	varchar(100)
+						,Lang		varchar(10)
+						,StringText		nvarchar(3000)
+				)
+
+		-- Load default configurations
+		INSERT INTO dbo.StringText(StringID,Lang,StringText)
+		SELECT 
+			*
+		FROM
+			(
+				VALUES 
+					 ('ALERT','en-us','ALERT: %s')
+					,('CLEAR','en-us','CLEAR')
+					,('SERVER','en-us','SERVER')
+			) N(StringID,Lang,StringText)
+		WHERE NOT EXISTS (
+			SELECT * FROM dbo.StringText S WHERE S.StringID = N.StringID
+			)
 
 
 	COMMIT;

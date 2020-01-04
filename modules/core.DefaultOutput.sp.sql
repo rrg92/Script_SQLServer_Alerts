@@ -7,7 +7,7 @@
 ALTER PROCEDURE core.DefaultOutput (
 	@AlertID int
 	,@Result int
-	,@Output nvarchar(max)
+	,@Output XML
 )
 AS
 BEGIN
@@ -18,6 +18,7 @@ BEGIN
 		,@MailAddr		nvarchar(1000)	
 		,@AlertName		varchar(100)
 		,@Subject		nvarchar(1000)
+		,@OutputBody	nvarchar(max)
 	;
 
 	SELECT 
@@ -28,10 +29,10 @@ BEGIN
 
 	SELECT @AlertName = AlertName FROM dbo.Alerts A WHERE A.AlertID = @AlertID;
 
-	SET @Subject = CASE @Result
-						WHEN 1 THEN 'ALERT'
-						ELSE 'CLEAR'
-					END+':['+CONVERT(varchar,@AlertID)+'] '+@AlertName
+	SELECT 
+		 @Subject		= @Output.value('(ap/output/description)[1]','nvarchar(max)')
+		,@OutputBody	= @Output.value('(ap/output/html)[1]','nvarchar(max)')
+	;
 
-	EXEC msdb..sp_send_dbmail @MailProfile,@MailAddr,@subject = @Subject, @body = @Output, @body_format = 'HTML';
+	EXEC msdb..sp_send_dbmail @MailProfile,@MailAddr,@subject = @Subject, @body = @OutputBody, @body_format = 'HTML';
 END
